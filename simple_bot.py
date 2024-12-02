@@ -69,6 +69,22 @@ class ProfessionalAstrologyBot:
         self.vectorstores = {}
         self.vectorstores = self.initialize_vectorstores()
         self.prediction_history = self.load_prediction_history()
+        self.chat_history = []  # Store chat history
+        self.max_history_tokens = 4000  # Limit context size
+        self.load_chat_history()  # Load chat history during initialization
+
+    def format_chat_history(self, question: str) -> List[Dict[str, str]]:
+        """Format chat history for Claude's messages format"""
+        messages = []
+        
+        # Add relevant past interactions
+        for past_msg in self.chat_history[-5:]:  # Keep last 5 interactions
+            messages.append({"role": "user", "content": past_msg["question"]})
+            messages.append({"role": "assistant", "content": past_msg["response"]})
+            
+        # Add current question
+        messages.append({"role": "user", "content": question})
+        return messages
 
     def setup_directories(self):
         """Setup directory structure for documents and caches"""
@@ -295,25 +311,44 @@ class ProfessionalAstrologyBot:
             json.dump([record.to_dict() for record in self.prediction_history], f, indent=2)
 
     def make_prediction(self, question: str) -> PredictionRecord:
-        """Make an astrological prediction based on the question"""
+        """Make an astrological prediction based on the question and chat history"""
         context, sources, confidence = self.get_relevant_context(question)
         
+        # Create system prompt with context
         system_prompt = f"""You are an expert Vedic astrologer specializing in Parashari astrology. 
-        Use the following reference material to make a detailed prediction based on Parashari principles. 
-        If the reference material doesn't contain enough information for a confident prediction, 
-        say so and explain what additional information would be needed.
+        Use the following reference material and our conversation history to make a detailed prediction 
+        based on Parashari principles. If the reference material doesn't contain enough information 
+        for a confident prediction, say so and explain what additional information would be needed.
 
         Reference Material:
-        {context}"""
+        {context}
+        
+        Remember to consider our previous discussion when making new predictions. If the current question 
+        relates to past predictions, incorporate that context into your response."""
 
+        # Get formatted chat history
+        messages = self.format_chat_history(question)
+        
+        # Make prediction using chat history
         response = self.client.messages.create(
             model="claude-3-sonnet-20240229",
             max_tokens=2000,
             system=system_prompt,
-            messages=[{"role": "user", "content": question}]
+            messages=messages
         )
 
         prediction = response.content[0].text
+        
+        # Store this interaction in chat history
+        self.chat_history.append({
+            "question": question,
+            "response": prediction,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Trim chat history if it gets too long
+        while len(str(self.chat_history)) > self.max_history_tokens:
+            self.chat_history.pop(0)
         
         record = PredictionRecord(
             question=question,
@@ -325,8 +360,28 @@ class ProfessionalAstrologyBot:
         
         self.prediction_history.append(record)
         self.save_prediction_history()
+        self.save_chat_history()  # New method to save chat history
         
         return record
+    def save_chat_history(self):
+        """Save chat history to file"""
+        chat_history_file = os.path.join(self.base_dir, "chat_history.json")
+        with open(chat_history_file, 'w') as f:
+            json.dump(self.chat_history, f, indent=2)
+
+    def load_chat_history(self):
+        """Load chat history from file"""
+        chat_history_file = os.path.join(self.base_dir, "chat_history.json")
+        if os.path.exists(chat_history_file):
+            with open(chat_history_file, 'r') as f:
+                self.chat_history = json.load(f)
+        else:
+            self.chat_history = []
+
+    def clear_chat_history(self):
+        """Clear the chat history"""
+        self.chat_history = []
+        self.save_chat_history()
 
     def update_prediction_feedback(self, prediction_index: int, feedback: str, 
                                  accuracy: float = None, notes: str = None):
@@ -377,8 +432,13 @@ def main():
                 print("- 'analysis': View prediction accuracy analysis")
                 print("- 'refresh': Update document database")
                 print("- 'force refresh': Rebuild entire document database")
+                print("- 'clear history': Clear chat history")  # Added this line
                 print("- 'help': Show this help message")
                 print("- 'quit': Exit the program")
+                
+            elif user_input == 'clear history':  # Added this block
+                bot.clear_chat_history()
+                print("Chat history cleared!")
                 
             elif user_input == 'history':
                 if not bot.prediction_history:
@@ -395,6 +455,7 @@ def main():
                         if record.notes:
                             print(f"Notes: {record.notes}")
                             
+                                        
             elif user_input == 'feedback':
                 if not bot.prediction_history:
                     print("\nNo predictions to update.")

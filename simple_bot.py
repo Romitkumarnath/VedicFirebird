@@ -135,7 +135,7 @@ class ProfessionalAstrologyBot:
         
         if os.path.exists(cache_path):
             try:
-                vectorstores['parashari'] = FAISS.load_local(cache_path, self.embeddings)
+                vectorstores['parashari'] = FAISS.load_local(cache_path, self.embeddings, allow_dangerous_deserialization=True)
                 print("Loaded existing vector database")
                 
                 needs_update = self._check_for_updates()
@@ -356,35 +356,31 @@ class ProfessionalAstrologyBot:
 
 def main():
     api_key = os.getenv('ANTHROPIC_API_KEY')
-
     
     try:
         bot = ProfessionalAstrologyBot(api_key)
+        print("\nHello! I'm your Professional Astrology Bot. I can help you with astrological predictions based on Vedic principles.")
+        print("You can chat with me naturally. Type 'help' to see available commands, or 'quit' to exit.")
         
         while True:
-            print("\nOptions:")
-            print("1. Make a prediction")
-            print("2. View prediction history")
-            print("3. Update prediction feedback")
-            print("4. Analyze prediction accuracy")
-            print("5. Refresh documents")
-            print("6. Force refresh all documents")
-            print("7. Quit")
+            user_input = input("\nYou: ").strip().lower()
             
-            choice = input("\nEnter your choice (1-6): ")
-            
-            if choice == "1":
-                question = input("\nEnter your question: ")
+            if user_input == 'quit':
+                print("\nThank you for consulting with me. Goodbye!")
+                break
                 
-                try:
-                    record = bot.make_prediction(question)
-                    print(f"\nPrediction: {record.prediction}")
-                    print(f"Confidence: {record.confidence:.2f}")
-                    print(f"Sources used: {', '.join(record.sources)}")
-                except Exception as e:
-                    print(f"Error making prediction: {str(e)}")
+            elif user_input == 'help':
+                print("\nAvailable commands:")
+                print("- Ask any astrological question")
+                print("- 'history': View past predictions")
+                print("- 'feedback': Update feedback for a prediction")
+                print("- 'analysis': View prediction accuracy analysis")
+                print("- 'refresh': Update document database")
+                print("- 'force refresh': Rebuild entire document database")
+                print("- 'help': Show this help message")
+                print("- 'quit': Exit the program")
                 
-            elif choice == "2":
+            elif user_input == 'history':
                 if not bot.prediction_history:
                     print("\nNo predictions found in history.")
                 else:
@@ -398,21 +394,21 @@ def main():
                             print(f"Feedback: {record.feedback}")
                         if record.notes:
                             print(f"Notes: {record.notes}")
-                    
-            elif choice == "3":
+                            
+            elif user_input == 'feedback':
                 if not bot.prediction_history:
                     print("\nNo predictions to update.")
                     continue
                 
                 try:
-                    idx = int(input("\nEnter prediction index: "))
+                    idx = int(input("Which prediction would you like to update? (Enter number): "))
                     if idx < 0 or idx >= len(bot.prediction_history):
-                        print("Invalid prediction index!")
+                        print("Invalid prediction number!")
                         continue
                     
-                    feedback = input("Enter feedback: ")
+                    feedback = input("What's your feedback? ")
                     
-                    accuracy_input = input("Enter accuracy (0-1) or press Enter to skip: ")
+                    accuracy_input = input("How accurate was the prediction? (0-1, or press Enter to skip): ")
                     accuracy = None
                     if accuracy_input.strip():
                         try:
@@ -424,35 +420,31 @@ def main():
                             print("Invalid accuracy value!")
                             continue
                     
-                    notes = input("Enter any additional notes: ")
+                    notes = input("Any additional notes? ")
                     
                     bot.update_prediction_feedback(idx, feedback, accuracy, notes)
-                    print("Feedback updated successfully!")
+                    print("Thank you for your feedback!")
                     
                 except ValueError:
-                    print("Please enter a valid prediction index!")
+                    print("Please enter a valid prediction number!")
                 except Exception as e:
                     print(f"Error updating feedback: {str(e)}")
                 
-            elif choice == "4":
+            elif user_input == 'analysis':
                 try:
                     analysis = bot.analyze_prediction_accuracy()
                     if analysis.empty:
-                        print("\nNo rated predictions available for analysis.")
+                        print("\nNo rated predictions available for analysis yet.")
                     else:
                         print("\nPrediction Analysis:")
-                        print("\nOverall Accuracy:")
-                        print(f"{analysis['overall_accuracy'].iloc[0]:.2%}")
-                        
-                        print("\nConfidence-Accuracy Correlation:")
-                        print(f"{analysis['confidence_correlation'].iloc[0]:.3f}")
-                        
+                        print(f"Overall Accuracy: {analysis['overall_accuracy'].iloc[0]:.2%}")
+                        print(f"Confidence-Accuracy Correlation: {analysis['confidence_correlation'].iloc[0]:.3f}")
                         print("\nAccuracy Over Time:")
                         print(analysis['accuracy_over_time'].apply(lambda x: f"{x:.2%}"))
                 except Exception as e:
                     print(f"Error analyzing predictions: {str(e)}")
                 
-            elif choice == "5":
+            elif user_input == 'refresh':
                 try:
                     old_vectorstores = bot.vectorstores.copy()
                     bot.vectorstores = bot.refresh_documents(force_refresh=False)
@@ -461,9 +453,9 @@ def main():
                 except Exception as e:
                     print(f"Error refreshing documents: {str(e)}")
                 
-            elif choice == "6":
+            elif user_input == 'force refresh':
                 try:
-                    confirm = input("\nThis will reprocess all documents. Continue? (y/n): ").lower()
+                    confirm = input("This will reprocess all documents. Continue? (y/n): ").lower()
                     if confirm == 'y':
                         old_vectorstores = bot.vectorstores.copy()
                         bot.vectorstores = bot.refresh_documents(force_refresh=True)
@@ -472,19 +464,22 @@ def main():
                 except Exception as e:
                     print(f"Error refreshing documents: {str(e)}")
                 
-            elif choice == "7":
-                print("\nThank you for using the Professional Astrology Bot!")
-                break
-                
             else:
-                print("\nInvalid choice! Please enter a number between 1 and 7.")
+                try:
+                    record = bot.make_prediction(user_input)
+                    print(f"\nPrediction:")
+                    print(f"{record.prediction}")
+                    print(f"\nConfidence: {record.confidence:.2f}")
+                    print(f"Sources consulted: {', '.join(record.sources)}")
+                except Exception as e:
+                    print(f"I apologize, but I encountered an error: {str(e)}")
+                    print("Please try rephrasing your question or type 'help' for available commands.")
                 
     except KeyboardInterrupt:
-        print("\n\nExiting program...")
+        print("\n\nGoodbye!")
     except Exception as e:
         print(f"\nAn unexpected error occurred: {str(e)}")
     finally:
-        # Save any pending changes
         try:
             if 'bot' in locals() and hasattr(bot, 'save_prediction_history'):
                 bot.save_prediction_history()

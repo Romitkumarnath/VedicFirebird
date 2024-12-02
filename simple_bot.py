@@ -69,9 +69,9 @@ class ProfessionalAstrologyBot:
         self.vectorstores = {}
         self.vectorstores = self.initialize_vectorstores()
         self.prediction_history = self.load_prediction_history()
-        self.chat_history = []  # Store chat history
-        self.max_history_tokens = 4000  # Limit context size
-        self.load_chat_history()  # Load chat history during initialization
+        self.chat_history = []  # Initialize empty chat history
+        self.max_history_tokens = 4000
+        
 
     def format_chat_history(self, question: str) -> List[Dict[str, str]]:
         """Format chat history for Claude's messages format"""
@@ -316,15 +316,12 @@ class ProfessionalAstrologyBot:
         
         # Create system prompt with context
         system_prompt = f"""You are an expert Vedic astrologer specializing in Parashari astrology. 
-        Use the following reference material and our conversation history to make a detailed prediction 
-        based on Parashari principles. If the reference material doesn't contain enough information 
-        for a confident prediction, say so and explain what additional information would be needed.
+        Use the following reference material to make a detailed prediction based on Parashari principles. 
+        If the reference material doesn't contain enough information for a confident prediction, 
+        say so and explain what additional information would be needed.
 
         Reference Material:
-        {context}
-        
-        Remember to consider our previous discussion when making new predictions. If the current question 
-        relates to past predictions, incorporate that context into your response."""
+        {context}"""
 
         # Get formatted chat history
         messages = self.format_chat_history(question)
@@ -360,7 +357,7 @@ class ProfessionalAstrologyBot:
         
         self.prediction_history.append(record)
         self.save_prediction_history()
-        self.save_chat_history()  # New method to save chat history
+        self.save_chat_history()
         
         return record
     def save_chat_history(self):
@@ -379,8 +376,14 @@ class ProfessionalAstrologyBot:
             self.chat_history = []
 
     def clear_chat_history(self):
-        """Clear the chat history"""
+        """Clear the chat history and remove the history file"""
         self.chat_history = []
+        chat_history_file = os.path.join(self.base_dir, "chat_history.json")
+        if os.path.exists(chat_history_file):
+            try:
+                os.remove(chat_history_file)
+            except Exception as e:
+                print(f"Error removing chat history file: {e}")
         self.save_chat_history()
 
     def update_prediction_feedback(self, prediction_index: int, feedback: str, 
@@ -542,10 +545,13 @@ def main():
         print(f"\nAn unexpected error occurred: {str(e)}")
     finally:
         try:
-            if 'bot' in locals() and hasattr(bot, 'save_prediction_history'):
-                bot.save_prediction_history()
-            if 'bot' in locals() and hasattr(bot, 'save_document_registry'):
-                bot.save_document_registry()
+            if 'bot' in locals():
+                if hasattr(bot, 'save_prediction_history'):
+                    bot.save_prediction_history()
+                if hasattr(bot, 'save_document_registry'):
+                    bot.save_document_registry()
+                if hasattr(bot, 'clear_chat_history'):
+                    bot.clear_chat_history()  # Clear chat history when exiting
         except Exception as e:
             print(f"Error saving data: {str(e)}")
 
